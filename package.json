@@ -1,0 +1,16 @@
+{
+    "name": "canvas-scroll",
+    "version": "1.0.0",
+    "description": "a tool for multi-platform scrolling canvas",
+    "bugs": {
+        "url": "https://github.com/GDOR-11/canvas-scroll/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/GDOR-11/canvas-scroll.git"
+    },
+    "license": "MIT",
+    "author": "",
+    "type": "esm",
+    "main": "build/index.js",
+}
