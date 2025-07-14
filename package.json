@@ -1,7 +1,7 @@
 {
-    "name": "canvas-scroll",
+    "name": "movable-canvas",
     "version": "1.0.0",
-    "description": "a tool for multi-platform scrolling canvas",
+    "description": "a tool for multi-platform movable canvas",
     "license": "MIT",
     "author": "",
     "types": "lib/types/index.d.ts",

@@ -28,6 +28,7 @@ export declare class RenderSpace {
         x: number;
         y: number;
     }, angle: number): void;
+    clearScreen(): void;
     get canvas(): HTMLCanvasElement;
     get ctx(): CanvasRenderingContext2D;
     get zoom(): number;
