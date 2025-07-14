@@ -2,15 +2,20 @@
     "name": "canvas-scroll",
     "version": "1.0.0",
     "description": "a tool for multi-platform scrolling canvas",
-    "bugs": {
-        "url": "https://github.com/GDOR-11/canvas-scroll/issues"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/GDOR-11/canvas-scroll.git"
-    },
     "license": "MIT",
     "author": "",
-    "type": "esm",
-    "main": "build/index.js",
+    "types": "lib/types/index.d.ts",
+    "type": "module",
+    "main": "lib/index.js",
+    "files": [
+        "lib/**/*"
+    ],
+    "devDependencies": {
+        "del-cli": "^6.0.0",
+        "typescript": "^5.8.3"
+    },
+    "scripts": {
+        "build": "del-cli lib && tsc --project tsconfig.json",
+        "prepack": "npm run build"
+    }
 }

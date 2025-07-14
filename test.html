@@ -1,0 +1,29 @@
+<!-- HTML template below -->
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Test Page</title>
+    </head>
+    <body>
+        <canvas id="canvas" width="800" height="600"></canvas>
+        <script type="module">
+            import { RenderSpace } from "./lib/index.js";
+
+            // Initialize the canvas and context
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+
+            let space = new RenderSpace(canvas, ctx);
+
+            ctx.fillStyle = "black";
+            function render() {
+                space.clear();
+                ctx.fillRect(100, 100, 100, 100);
+                requestAnimationFrame(render);
+            }
+            render();
+        </script>
+    </body>
+</html>
