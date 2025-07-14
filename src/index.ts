@@ -1,13 +1,3 @@
-export const config = Object.seal({
-    /** value in the rage (1, ∞) determining the zoom speed of the scrollwheel */
-    scroll_sensitivity: 1.01,
-    /** value in the range (0, ∞) determining the sensitivity of the rotation */
-    rotation_sensitivity: 0.01,
-    panning: true,
-    zooming: true,
-    rotating: true
-});
-
 function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
     type Pointer = {
         x: number;
@@ -18,13 +8,12 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
 
     canvas.addEventListener("contextmenu", event => event.preventDefault());
     canvas.addEventListener("pointerdown", event => {
-        pointers[event.pointerId] = { x: event.x, y: event.y, button: event.button };
+        pointers[event.pointerId] = { x: event.pageX, y: event.pageY, button: event.button };
     });
     canvas.addEventListener("pointerup", event => {
         delete pointers[event.pointerId];
     });
 
-    // warning: spaghetti code ahead
     canvas.addEventListener("pointermove", event => {
         const pointer = pointers[event.pointerId];
         if (!pointer) return;
@@ -33,48 +22,53 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
             x: pointer.x,
             y: pointer.y
         };
-        pointer.x = event.x;
-        pointer.y = event.y;
+        pointer.x = event.pageX;
+        pointer.y = event.pageY;
 
-        let pointer_count = Object.keys(pointers).length;
+        switch (Object.keys(pointers).length) {
+            case 1:
+                if (pointer.button === 2 && space.config.rotating) {
+                    space.rotateAround({ x: canvas.width / 2, y: canvas.height / 2 }, space.config.rotation_sensitivity * (pointer.x - last.x));
+                }
+                if (pointer.button == 0 && space.config.panning) {
+                    space.translate({
+                        x: pointer.x - last.x,
+                        y: pointer.y - last.y
+                    });
+                }
+                break;
+            case 2:
+                const anchor = Object.values(pointers).find(p => p !== pointer);
+                if (!anchor) throw new Error("something is really wrong bro, good luck debugging ts");
+                let center = {
+                    x: (pointer.x + anchor.x) / 2,
+                    y: (pointer.y + anchor.y) / 2
+                }
 
-        if (pointer_count > 2) return;
-
-        if (pointer.button === 2 && config.rotating) {
-            space.rotateAround({ x: canvas.width / 2, y: canvas.height / 2 }, config.rotation_sensitivity * event.movementX);
-            return;
-        }
-        if (pointer.button !== 0) return;
-
-        if (config.panning) {
-            space.translate({
-                x: event.movementX / pointer_count,
-                y: event.movementY / pointer_count
-            });
-        }
-
-        if (pointer_count !== 2) return;
-
-        const anchor = Object.values(pointers).find(p => p !== pointer);
-        if (!anchor) throw new Error("something is really wrong bro, good luck debugging ts");
-        let center = { x: (event.x + anchor.x) / 2, y: (event.y + anchor.y) / 2 };
-
-        if (config.zooming) {
-            let dist = Math.hypot(pointer.x - anchor.x, pointer.y - anchor.y);
-            let last_dist = Math.hypot(last.x - anchor.x, last.y - anchor.y);
-            space.zoomInto({ x: anchor.x, y: anchor.y }, dist / last_dist);
-        }
-        if (config.rotating) {
-            let angle = Math.atan2(pointer.y - anchor.y, pointer.x - anchor.x);
-            let last_angle = Math.atan2(last.y - anchor.y, last.x - anchor.x);
-            space.rotateAround({ x: center.x, y: center.y }, angle - last_angle);
+                if (space.config.panning) {
+                    space.translate({
+                        x: (pointer.x - last.x) / 2,
+                        y: (pointer.y - last.y) / 2
+                    });
+                }
+                if (space.config.zooming) {
+                    let dist = Math.hypot(pointer.x - anchor.x, pointer.y - anchor.y);
+                    let last_dist = Math.hypot(last.x - anchor.x, last.y - anchor.y);
+                    space.zoomInto({ x: center.x, y: center.y }, dist / last_dist);
+                }
+                if (space.config.rotating) {
+                    let angle = Math.atan2(pointer.y - anchor.y, pointer.x - anchor.x);
+                    let last_angle = Math.atan2(last.y - anchor.y, last.x - anchor.x);
+                    space.rotateAround({ x: center.x, y: center.y }, angle - last_angle);
+                }
+                break;
         }
     });
 
     canvas.addEventListener("wheel", event => {
-        if (!config.zooming) return;
-        let zoom = Math.pow(config.scroll_sensitivity, -event.deltaY);
-        space.zoomInto({ x: event.x, y: event.y }, zoom);
+        if (!space.config.zooming) return;
+        let zoom = Math.pow(space.config.scroll_sensitivity, -event.deltaY);
+        space.zoomInto({ x: event.pageX, y: event.pageY }, zoom);
         event.preventDefault();
     }, { passive: false });
 }
@@ -87,12 +81,25 @@ export class RenderSpace {
     private offset_proxy: typeof this._offset;
     private _rotation: number = 0;
 
+    config = Object.seal({
+        /** value in the rage (1, ∞) determining the zoom speed of the scrollwheel */
+        scroll_sensitivity: 1.01,
+        /** value in the range (0, ∞) determining the sensitivity of the rotation */
+        rotation_sensitivity: 0.01,
+        panning: true,
+        zooming: true,
+        rotating: true
+    });
+
     constructor(canvas: HTMLCanvasElement, ctx?: CanvasRenderingContext2D) {
         this._canvas = canvas;
         ctx = ctx ?? canvas.getContext("2d") ?? undefined;
         if (ctx === undefined) throw new Error("Failed to get canvas context. If you've already called canvas.getContext, pass it as second argument.");
         this._ctx = ctx;
+
+        canvas.style.touchAction = "none";
         event_listeners(this, canvas);
+        this.updateTransform();
 
         let updateTransform = this.updateTransform.bind(this);
         this.offset_proxy = new Proxy(this._offset, {
@@ -125,8 +132,8 @@ export class RenderSpace {
     rotateAround(center: { x: number, y: number }, angle: number) {
         this._rotation += angle;
         let diff = { x: this.offset.x - center.x, y: this.offset.y - center.y };
-        this._offset.x = center.x + diff.x * Math.cos(angle) - diff.y * Math.sin(angle),
-        this._offset.y = center.y + diff.x * Math.sin(angle) + diff.y * Math.cos(angle),
+        this._offset.x = center.x + diff.x * Math.cos(angle) - diff.y * Math.sin(angle);
+        this._offset.y = center.y + diff.x * Math.sin(angle) + diff.y * Math.cos(angle);
         this.updateTransform();
     }
 

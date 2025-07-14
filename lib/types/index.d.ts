@@ -1,12 +1,3 @@
-export declare const config: {
-    /** value in the rage (1, ∞) determining the zoom speed of the scrollwheel */
-    scroll_sensitivity: number;
-    /** value in the range (0, ∞) determining the sensitivity of the rotation */
-    rotation_sensitivity: number;
-    panning: boolean;
-    zooming: boolean;
-    rotating: boolean;
-};
 export declare class RenderSpace {
     private _canvas;
     private _ctx;
@@ -14,6 +5,15 @@ export declare class RenderSpace {
     private _offset;
     private offset_proxy;
     private _rotation;
+    config: {
+        /** value in the rage (1, ∞) determining the zoom speed of the scrollwheel */
+        scroll_sensitivity: number;
+        /** value in the range (0, ∞) determining the sensitivity of the rotation */
+        rotation_sensitivity: number;
+        panning: boolean;
+        zooming: boolean;
+        rotating: boolean;
+    };
     constructor(canvas: HTMLCanvasElement, ctx?: CanvasRenderingContext2D);
     updateTransform(): void;
     translate(translation: {
