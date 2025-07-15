@@ -1,7 +1,7 @@
 {
-    "name": "movable-canvas",
+    "name": "movable-render-space",
     "version": "1.0.0",
-    "description": "a tool for multi-platform movable canvas",
+    "description": "a tool for multi-platform movable render space",
     "license": "MIT",
     "author": "",
     "types": "lib/types/index.d.ts",
