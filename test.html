@@ -8,20 +8,26 @@
     <body>
         <canvas id="canvas" width="800" height="600"></canvas>
         <script type="module">
-            import { RenderSpace } from "./lib/index.js";
+            import RenderSpace from "./lib/index.js";
 
-            const canvas = document.getElementById('canvas');
-            const ctx = canvas.getContext('2d');
+            let space = new RenderSpace(document.getElementById("canvas"));
+            space.config.damping_strength = 0.05;
+            // space.config.panning = false;
+            // space.config.zooming = false;
+            // space.config.rotating = false;
 
-            let space = new RenderSpace(canvas, ctx);
-
-            ctx.fillStyle = "black";
+            let now = performance.now();
             function render() {
                 space.clearScreen();
-                ctx.fillRect(100, 100, 100, 100);
+                space.updateDamping((performance.now() - now) / 1000);
+
+                space.ctx.fillStyle = "black";
+                space.ctx.fillRect(100, 100, 100, 100);
+
+                now = performance.now();
                 requestAnimationFrame(render);
             }
-            render();
+            requestAnimationFrame(render);
         </script>
     </body>
 </html>

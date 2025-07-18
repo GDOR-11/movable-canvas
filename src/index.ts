@@ -1,3 +1,129 @@
+export type Vec = {
+    x: number,
+    y: number
+}
+
+export class Transform {
+    translation: Vec = { x: 0, y: 0 };
+    zoom: number = 1;
+    rotation: number = 0;
+
+    constructor(translation?: Vec, zoom?: number, rotation?: number) {
+        this.translation = translation || this.translation;
+        this.zoom = zoom || this.zoom;
+        this.rotation = rotation || this.rotation;
+    }
+
+    translate(translation: Vec) {
+        this.translation.x += translation.x;
+        this.translation.y += translation.y;
+    }
+    zoomInto(center: Vec, zoom: number) {
+        this.zoom *= zoom;
+        this.translation.x = center.x + (this.translation.x - center.x) * zoom;
+        this.translation.y = center.y + (this.translation.y - center.y) * zoom;
+    }
+    rotateAround(center: Vec, angle: number) {
+        this.rotation += angle;
+        let diff = { x: this.translation.x - center.x, y: this.translation.y - center.y };
+        this.translation.x = center.x + diff.x * Math.cos(angle) - diff.y * Math.sin(angle);
+        this.translation.y = center.y + diff.x * Math.sin(angle) + diff.y * Math.cos(angle);
+    }
+
+    lerp(transform: Transform, t: number) {
+        let lerp = (a: number, b: number) => t * b + (1 - t) * a;
+
+        this.translation.x = lerp(this.translation.x, transform.translation.x);
+        this.translation.y = lerp(this.translation.y, transform.translation.y);
+        this.zoom = lerp(this.zoom, transform.zoom);
+        this.rotation = lerp(this.rotation, transform.rotation);
+    }
+}
+
+export default class RenderSpace {
+    ctx: CanvasRenderingContext2D;
+    transform: Transform;
+    target_transform: Transform;
+    _listeners: ((space: RenderSpace) => any)[] = [];
+
+    config = {
+        /** value in the rage (1, ∞) determining the zoom speed of the scrollwheel */
+        scroll_sensitivity: 1.01,
+        /** value in the range (0, ∞) determining the sensitivity of the rotation */
+        rotation_sensitivity: 0.01,
+        /** value in the range [0, ∞) determining the strength of damping */
+        damping_strength: 0,
+        panning: true,
+        zooming: true,
+        rotating: true
+    };
+
+    constructor(canvas: HTMLCanvasElement);
+    constructor(ctx: CanvasRenderingContext2D);
+    constructor(arg: HTMLCanvasElement | CanvasRenderingContext2D) {
+        let ctx = arg instanceof HTMLCanvasElement ? arg.getContext("2d") : arg;
+        if (ctx === null) throw new Error("Failed to get CanvasRenderingContext2D");
+        this.ctx = ctx;
+
+        this.transform = new Transform();
+        this.target_transform = new Transform();
+
+        this.canvas.style.touchAction = "none";
+        event_listeners(this, this.canvas);
+    }
+
+    updateDamping(dt: number, update_transform: boolean = true) {
+        this.transform.lerp(this.target_transform, 1 - Math.exp(-dt / this.config.damping_strength));
+        if (update_transform) this.updateTransform();
+    }
+    updateTransform() {
+        if (this.config.damping_strength === 0) {
+            this.transform = structuredClone(this.target_transform);
+        }
+        this.ctx.resetTransform();
+        this.ctx.translate(this.transform.translation.x, this.transform.translation.y);
+        this.ctx.rotate(this.transform.rotation);
+        this.ctx.scale(this.transform.zoom, this.transform.zoom);
+        this._listeners.forEach(listener => listener(this));
+    }
+
+    translate(translation: Vec) {
+        this.target_transform.translate(translation);
+    }
+    zoomInto(center: Vec, zoom: number) {
+        this.target_transform.zoomInto(center, zoom);
+    }
+    rotateAround(center: Vec, angle: number) {
+        this.target_transform.rotateAround(center, angle);
+    }
+
+    lerp(transform: Transform, t: number) {
+        this.target_transform.lerp(transform, t);
+    }
+
+    addListener(listener: (space: RenderSpace) => any) {
+        this._listeners.push(listener);
+    }
+    removeListener(listener: (space: RenderSpace) => any) {
+        this._listeners.splice(this._listeners.indexOf(listener), 1);
+    }
+
+    clearScreen() {
+        this.ctx.save();
+        this.ctx.resetTransform();
+        this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+        this.ctx.restore();
+    }
+
+    get canvas(): HTMLCanvasElement {
+        return this.ctx.canvas;
+    }
+    get listeners(): ((space: RenderSpace) => any)[] {
+        return this._listeners.slice();
+    }
+}
+
+
 function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
     type Pointer = {
         x: number;
@@ -36,6 +162,7 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
                         y: pointer.y - last.y
                     });
                 }
+                space.updateTransform();
                 break;
             case 2:
                 const anchor = Object.values(pointers).find(p => p !== pointer);
@@ -61,6 +188,7 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
                     let last_angle = Math.atan2(last.y - anchor.y, last.x - anchor.x);
                     space.rotateAround({ x: center.x, y: center.y }, angle - last_angle);
                 }
+                space.updateTransform();
                 break;
         }
     });
@@ -69,108 +197,7 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
         if (!space.config.zooming) return;
         let zoom = Math.pow(space.config.scroll_sensitivity, -event.deltaY);
         space.zoomInto({ x: event.pageX, y: event.pageY }, zoom);
+        space.updateTransform();
         event.preventDefault();
     }, { passive: false });
-}
-
-export class RenderSpace {
-    private _canvas: HTMLCanvasElement;
-    private _ctx: CanvasRenderingContext2D;
-    private _zoom: number = 1;
-    private _offset: { x: number, y: number } = { x: 0, y: 0 };
-    private offset_proxy: typeof this._offset;
-    private _rotation: number = 0;
-
-    config = Object.seal({
-        /** value in the rage (1, ∞) determining the zoom speed of the scrollwheel */
-        scroll_sensitivity: 1.01,
-        /** value in the range (0, ∞) determining the sensitivity of the rotation */
-        rotation_sensitivity: 0.01,
-        panning: true,
-        zooming: true,
-        rotating: true
-    });
-
-    constructor(canvas: HTMLCanvasElement, ctx?: CanvasRenderingContext2D) {
-        this._canvas = canvas;
-        ctx = ctx ?? canvas.getContext("2d") ?? undefined;
-        if (ctx === undefined) throw new Error("Failed to get canvas context. If you've already called canvas.getContext, pass it as second argument.");
-        this._ctx = ctx;
-
-        canvas.style.touchAction = "none";
-        event_listeners(this, canvas);
-        this.updateTransform();
-
-        let updateTransform = this.updateTransform.bind(this);
-        this.offset_proxy = new Proxy(this._offset, {
-            set(target, prop, value) {
-                let success = Reflect.set(target, prop, value);
-                updateTransform();
-                return success;
-            }
-        })
-    }
-
-    updateTransform() {
-        this._ctx.resetTransform();
-        this._ctx.translate(this._offset.x, this._offset.y);
-        this._ctx.rotate(this._rotation);
-        this._ctx.scale(this._zoom, this._zoom);
-    }
-
-    translate(translation: { x: number, y: number }) {
-        this._offset.x += translation.x;
-        this._offset.y += translation.y;
-        this.updateTransform();
-    }
-    zoomInto(center: { x: number, y: number }, zoom: number) {
-        this._zoom *= zoom;
-        this._offset.x = center.x + (this.offset.x - center.x) * zoom;
-        this._offset.y = center.y + (this.offset.y - center.y) * zoom;
-        this.updateTransform()
-    }
-    rotateAround(center: { x: number, y: number }, angle: number) {
-        this._rotation += angle;
-        let diff = { x: this.offset.x - center.x, y: this.offset.y - center.y };
-        this._offset.x = center.x + diff.x * Math.cos(angle) - diff.y * Math.sin(angle);
-        this._offset.y = center.y + diff.x * Math.sin(angle) + diff.y * Math.cos(angle);
-        this.updateTransform();
-    }
-
-    clearScreen() {
-        this._ctx.save();
-        this._ctx.resetTransform();
-        this._ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
-        this._ctx.restore();
-    }
-
-    // getter and setter spam
-    get canvas(): HTMLCanvasElement {
-        return this._canvas;
-    }
-    get ctx(): CanvasRenderingContext2D {
-        return this._ctx;
-    }
-    get zoom(): number {
-        return this._zoom;
-    }
-    set zoom(value: number) {
-        this._zoom = value;
-        this.updateTransform();
-    }
-    get offset(): { x: number, y: number } {
-        return this.offset_proxy;
-    }
-    set offset(value: { x: number, y: number }) {
-        this._offset.x = value.x;
-        this._offset.y = value.y;
-        this.updateTransform();
-    }
-    get rotation(): number {
-        return this._rotation;
-    }
-    set rotation(value: number) {
-        this._rotation = value;
-        this.updateTransform();
-    }
 }
