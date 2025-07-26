@@ -17,5 +17,8 @@
     "scripts": {
         "build": "del-cli lib && tsc --project tsconfig.json",
         "prepack": "npm run build"
+    },
+    "dependencies": {
+        "gl-matrix": "^3.4.3"
     }
 }

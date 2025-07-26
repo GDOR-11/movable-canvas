@@ -1,42 +1,75 @@
-export type Vec = {
-    x: number,
-    y: number
+import { vec2, mat2d } from "gl-matrix";
+
+// gotta implement it myself until
+// github.com/toji/gl-matrix/pull/490 gets accepted
+function signedAngle(a: vec2, b: vec2): number {
+    let ax = a[0], ay = a[1],
+        bx = b[0], by = b[1];
+    return Math.atan2(ax * by - ay * bx, ax * bx + ay * by);
 }
 
 export class Transform {
-    translation: Vec = { x: 0, y: 0 };
+    translation: vec2 = vec2.create();
     zoom: number = 1;
     rotation: number = 0;
 
-    constructor(translation?: Vec, zoom?: number, rotation?: number) {
+    constructor(translation?: vec2, zoom?: number, rotation?: number) {
         this.translation = translation || this.translation;
         this.zoom = zoom || this.zoom;
         this.rotation = rotation || this.rotation;
     }
 
-    translate(translation: Vec) {
-        this.translation.x += translation.x;
-        this.translation.y += translation.y;
+    translationMatrix(): mat2d {
+        return mat2d.fromTranslation(mat2d.create(), this.translation);
     }
-    zoomInto(center: Vec, zoom: number) {
+    scalingMatrix(): mat2d {
+        return mat2d.fromScaling(mat2d.create(), [this.zoom, this.zoom]);
+    }
+    rotationMatrix(): mat2d {
+        return mat2d.fromRotation(mat2d.create(), this.rotation);
+    }
+    matrix(): mat2d {
+        let m = mat2d.create();
+        mat2d.mul(m, this.translationMatrix(), this.scalingMatrix());
+        mat2d.mul(m, m, this.rotationMatrix());
+        return m;
+    }
+
+    translate(translation: vec2) {
+        vec2.add(this.translation, this.translation, translation);
+    }
+    zoomInto(center: vec2, zoom: number) {
         this.zoom *= zoom;
-        this.translation.x = center.x + (this.translation.x - center.x) * zoom;
-        this.translation.y = center.y + (this.translation.y - center.y) * zoom;
+        vec2.sub(this.translation, this.translation, center);
+        vec2.scaleAndAdd(this.translation, center, this.translation, zoom);
     }
-    rotateAround(center: Vec, angle: number) {
+    rotateAround(center: vec2, angle: number) {
         this.rotation += angle;
-        let diff = { x: this.translation.x - center.x, y: this.translation.y - center.y };
-        this.translation.x = center.x + diff.x * Math.cos(angle) - diff.y * Math.sin(angle);
-        this.translation.y = center.y + diff.x * Math.sin(angle) + diff.y * Math.cos(angle);
+        vec2.rotate(this.translation, this.translation, center, angle);
     }
 
     lerp(transform: Transform, t: number) {
-        let lerp = (a: number, b: number) => t * b + (1 - t) * a;
+        vec2.lerp(this.translation, this.translation, transform.translation, t);
+        this.zoom = (1 - t) * this.zoom + t * transform.zoom;
+        this.rotation = (1 - t) * this.rotation + t * transform.rotation;
+    }
 
-        this.translation.x = lerp(this.translation.x, transform.translation.x);
-        this.translation.y = lerp(this.translation.y, transform.translation.y);
-        this.zoom = lerp(this.zoom, transform.zoom);
-        this.rotation = lerp(this.rotation, transform.rotation);
+    copy(transform: Transform) {
+        vec2.copy(this.translation, transform.translation);
+        this.zoom = transform.zoom;
+        this.rotation = transform.rotation;
+    }
+
+    /** mutates the argument!!! */
+    apply(point: vec2): vec2 {
+        return vec2.transformMat2d(point, point, this.matrix());
+    }
+
+    inverse(): Transform {
+        let p = vec2.negate(vec2.create(), this.translation);
+        vec2.scale(p, p, 1 / this.zoom);
+        vec2.rotate(p, p, vec2.create(), -this.rotation);
+        return new Transform(p, 1 / this.zoom, -this.rotation);
     }
 }
 
@@ -78,25 +111,33 @@ export default class RenderSpace {
     }
     updateTransform() {
         if (this.config.damping_strength === 0) {
-            this.transform = structuredClone(this.target_transform);
+            this.transform.copy(this.target_transform);
         }
         this.ctx.resetTransform();
-        this.ctx.translate(this.transform.translation.x, this.transform.translation.y);
+        this.ctx.translate(...this.transform.translation as [number, number]);
         this.ctx.rotate(this.transform.rotation);
         this.ctx.scale(this.transform.zoom, this.transform.zoom);
         this._listeners.forEach(listener => listener(this));
     }
 
-    translate(translation: Vec) {
-        this.target_transform.translate(translation);
+    /** mutates the argument!!! */
+    renderSpaceToScreen(point: vec2): vec2 {
+        return this.transform.apply(point);
     }
-    zoomInto(center: Vec, zoom: number) {
-        this.target_transform.zoomInto(center, zoom);
-    }
-    rotateAround(center: Vec, angle: number) {
-        this.target_transform.rotateAround(center, angle);
+    /** mutates the argument!!! */
+    screenToRenderSpace(point: vec2): vec2 {
+        return this.transform.inverse().apply(point);
     }
 
+    translate(translation: vec2) {
+        this.target_transform.translate(translation);
+    }
+    zoomInto(center: vec2, zoom: number) {
+        this.target_transform.zoomInto(center, zoom);
+    }
+    rotateAround(center: vec2, angle: number) {
+        this.target_transform.rotateAround(center, angle);
+    }
     lerp(transform: Transform, t: number) {
         this.target_transform.lerp(transform, t);
     }
@@ -126,15 +167,17 @@ export default class RenderSpace {
 
 function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
     type Pointer = {
-        x: number;
-        y: number;
-        button: number;
+        pos: vec2,
+        button: number
     };
     let pointers: { [id: string]: Pointer } = {};
 
     canvas.addEventListener("contextmenu", event => event.preventDefault());
     canvas.addEventListener("pointerdown", event => {
-        pointers[event.pointerId] = { x: event.pageX, y: event.pageY, button: event.button };
+        pointers[event.pointerId] = {
+            pos: vec2.fromValues(event.offsetX, event.offsetY),
+            button: event.button
+        };
     });
     canvas.addEventListener("pointerup", event => {
         delete pointers[event.pointerId];
@@ -144,49 +187,40 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
         const pointer = pointers[event.pointerId];
         if (!pointer) return;
 
-        let last = {
-            x: pointer.x,
-            y: pointer.y
-        };
-        pointer.x = event.pageX;
-        pointer.y = event.pageY;
+        let last = vec2.clone(pointer.pos);
+        vec2.set(pointer.pos, event.offsetX, event.offsetY);
 
         switch (Object.keys(pointers).length) {
             case 1:
                 if (pointer.button === 2 && space.config.rotating) {
-                    space.rotateAround({ x: canvas.width / 2, y: canvas.height / 2 }, space.config.rotation_sensitivity * (pointer.x - last.x));
+                    space.rotateAround(
+                        [canvas.width / 2, canvas.height / 2],
+                        space.config.rotation_sensitivity * (pointer.pos[0] - last[0])
+                    );
                 }
                 if (pointer.button == 0 && space.config.panning) {
-                    space.translate({
-                        x: pointer.x - last.x,
-                        y: pointer.y - last.y
-                    });
+                    space.translate(vec2.sub(vec2.create(), pointer.pos, last));
                 }
                 space.updateTransform();
                 break;
             case 2:
                 const anchor = Object.values(pointers).find(p => p !== pointer);
-                if (!anchor) throw new Error("something is really wrong bro, good luck debugging ts");
-                let center = {
-                    x: (pointer.x + anchor.x) / 2,
-                    y: (pointer.y + anchor.y) / 2
-                }
+                if (anchor === undefined) throw new Error("something is really wrong bro, good luck debugging ts");
+                let center = vec2.add(vec2.create(), pointer.pos, anchor.pos);
+                vec2.scale(center, center, 0.5);
+
+                let diff = vec2.sub(vec2.create(), pointer.pos, anchor.pos);
+                let last_diff = vec2.sub(vec2.create(), last, anchor.pos);
 
                 if (space.config.panning) {
-                    space.translate({
-                        x: (pointer.x - last.x) / 2,
-                        y: (pointer.y - last.y) / 2
-                    });
+                    let movement = vec2.sub(vec2.create(), pointer.pos, last);
+                    space.translate(vec2.scale(movement, movement, 0.5));
                 }
                 if (space.config.zooming) {
-                    let dist = Math.hypot(pointer.x - anchor.x, pointer.y - anchor.y);
-                    let last_dist = Math.hypot(last.x - anchor.x, last.y - anchor.y);
-                    space.zoomInto({ x: center.x, y: center.y }, dist / last_dist);
+                    space.zoomInto(center, vec2.len(diff) / vec2.len(last_diff));
                 }
                 if (space.config.rotating) {
-                    let angle = Math.atan2(pointer.y - anchor.y, pointer.x - anchor.x);
-                    let last_angle = Math.atan2(last.y - anchor.y, last.x - anchor.x);
-                    space.rotateAround({ x: center.x, y: center.y }, angle - last_angle);
+                    space.rotateAround(center, signedAngle(last_diff, diff));
                 }
                 space.updateTransform();
                 break;
@@ -196,7 +230,7 @@ function event_listeners(space: RenderSpace, canvas: HTMLCanvasElement) {
     canvas.addEventListener("wheel", event => {
         if (!space.config.zooming) return;
         let zoom = Math.pow(space.config.scroll_sensitivity, -event.deltaY);
-        space.zoomInto({ x: event.pageX, y: event.pageY }, zoom);
+        space.zoomInto([ event.offsetX, event.offsetY ], zoom);
         space.updateTransform();
         event.preventDefault();
     }, { passive: false });

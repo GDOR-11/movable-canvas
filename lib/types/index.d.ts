@@ -1,16 +1,21 @@
-export type Vec = {
-    x: number;
-    y: number;
-};
+import { vec2, mat2d } from "gl-matrix";
 export declare class Transform {
-    translation: Vec;
+    translation: vec2;
     zoom: number;
     rotation: number;
-    constructor(translation?: Vec, zoom?: number, rotation?: number);
-    translate(translation: Vec): void;
-    zoomInto(center: Vec, zoom: number): void;
-    rotateAround(center: Vec, angle: number): void;
+    constructor(translation?: vec2, zoom?: number, rotation?: number);
+    translationMatrix(): mat2d;
+    scalingMatrix(): mat2d;
+    rotationMatrix(): mat2d;
+    matrix(): mat2d;
+    translate(translation: vec2): void;
+    zoomInto(center: vec2, zoom: number): void;
+    rotateAround(center: vec2, angle: number): void;
     lerp(transform: Transform, t: number): void;
+    copy(transform: Transform): void;
+    /** mutates the argument!!! */
+    apply(point: vec2): vec2;
+    inverse(): Transform;
 }
 export default class RenderSpace {
     ctx: CanvasRenderingContext2D;
@@ -32,9 +37,13 @@ export default class RenderSpace {
     constructor(ctx: CanvasRenderingContext2D);
     updateDamping(dt: number, update_transform?: boolean): void;
     updateTransform(): void;
-    translate(translation: Vec): void;
-    zoomInto(center: Vec, zoom: number): void;
-    rotateAround(center: Vec, angle: number): void;
+    /** mutates the argument!!! */
+    renderSpaceToScreen(point: vec2): vec2;
+    /** mutates the argument!!! */
+    screenToRenderSpace(point: vec2): vec2;
+    translate(translation: vec2): void;
+    zoomInto(center: vec2, zoom: number): void;
+    rotateAround(center: vec2, angle: number): void;
     lerp(transform: Transform, t: number): void;
     addListener(listener: (space: RenderSpace) => any): void;
     removeListener(listener: (space: RenderSpace) => any): void;

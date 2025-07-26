@@ -1,0 +1,10 @@
+{
+    "name": "test",
+    "dependencies": {
+        "gl-matrix": "^3.4.3",
+        "movable-render-space": "file:.."
+    },
+    "scripts": {
+        "build": "esbuild ./index.js --outfile=bundle.js --bundle --minify"
+    }
+}
