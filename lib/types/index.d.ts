@@ -41,6 +41,11 @@ export default class RenderSpace {
     renderSpaceToScreen(point: vec2): vec2;
     /** mutates the argument!!! */
     screenToRenderSpace(point: vec2): vec2;
+    /**
+      * returns the smallest render-space AABB that covers the entire screen
+      * @returns {[vec2, vec2]} top left and bottom right corner
+      **/
+    getScreenAABB(): [vec2, vec2];
     translate(translation: vec2): void;
     zoomInto(center: vec2, zoom: number): void;
     rotateAround(center: vec2, angle: number): void;

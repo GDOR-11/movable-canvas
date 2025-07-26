@@ -28,6 +28,12 @@ function render() {
         space.clearScreen();
         space.updateDamping((Date.now() - last_frame) / 1000);
 
+        // draw the AABB slightly smaller for it to be visible
+        space.ctx.fillStyle = "grey";
+        let aabb = space.getScreenAABB();
+        space.ctx.fillRect(aabb[0][0] + 10, aabb[0][1] + 10, aabb[1][0] - aabb[0][0] - 20, aabb[1][1] - aabb[0][1] - 20);
+
+
         space.ctx.fillStyle = "white";
         space.ctx.fillRect(100, 100, 100, 100);
 
